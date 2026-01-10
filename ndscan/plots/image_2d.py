@@ -1,7 +1,8 @@
 """Pseudocolor 2D plot for equidistant data."""
 
-from itertools import chain, repeat
 import logging
+from itertools import chain, repeat
+
 import numpy as np
 import pyqtgraph
 
@@ -10,9 +11,15 @@ from . import colormaps
 from .cursor import CrosshairAxisLabel, CrosshairLabel, LabeledCrosshairCursor
 from .model import ScanModel
 from .plot_widgets import ContextMenuPanesWidget, add_source_id_label
-from .utils import (call_later, extract_linked_datasets, extract_scalar_channels,
-                    format_param_identity, get_axis_scaling_info, setup_axis_item,
-                    enum_to_numeric)
+from .utils import (
+    call_later,
+    enum_to_numeric,
+    extract_linked_datasets,
+    extract_scalar_channels,
+    format_param_identity,
+    get_axis_scaling_info,
+    setup_axis_item,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +161,13 @@ class _ImagePlot:
         self.z_crosshair_label.set_crosshair_info(*crosshair_info[0])
 
         self._invalidate_current()
+
+        cmap = colormaps.plasma
+        display_hints = channel.get("display_hints", {})
+        if display_hints.get("coordinate_type", "") == "cyclic":
+            cmap = colormaps.kovesi_c8
+        self.colorbar.setColorMap(cmap)
+
         self.update(self.averaging_enabled)
 
     def data_changed(self, points, invalidate_previous: bool = False):
@@ -233,13 +247,6 @@ class _ImagePlot:
             coords, z = (x_data[data_idx], y_data[data_idx]), z_data[data_idx]
             self.image_data[x_idx, y_idx] = (self.averages_by_coords[coords][0]
                                              if averaging_enabled else z)
-
-        cmap = colormaps.plasma
-        channel = self.channels[self.active_channel_name]
-        display_hints = channel.get("display_hints", {})
-        if display_hints.get("coordinate_type", "") == "cyclic":
-            cmap = colormaps.kovesi_c8
-        self.colorbar.setColorMap(cmap)
 
         # Update z autorange if active.
         z_limits = self._active_fixed_z_limits()
