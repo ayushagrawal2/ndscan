@@ -60,6 +60,9 @@ class ScanOption(QtCore.QObject):
         self.schema = schema
         self.path = path
 
+        self.dtype = schema.get("type", None)
+        assert self.dtype is not None, f"Scan option schema missing type: {schema}"
+
     def build_ui(self, layout: QtWidgets.QLayout) -> None:
         raise NotImplementedError
 
@@ -242,6 +245,7 @@ class RangeScanOption(NumericScanOption):
             "path": self.path,
             "range": {
                 "randomise_order": self.check_randomise.isChecked(),
+                "dtype": self.dtype,
             },
         }
         self.write_type_and_range(spec)
@@ -398,6 +402,7 @@ class ExpandingScanOption(NumericScanOption):
                 "centre": self.box_centre.value() * self.scale,
                 "spacing": self.box_spacing.value() * self.scale,
                 "randomise_order": self.check_randomise.isChecked(),
+                "dtype": self.dtype,
             },
         }
         spec["range"]["limit_lower"] = self.min

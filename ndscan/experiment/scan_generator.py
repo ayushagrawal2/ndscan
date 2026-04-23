@@ -1,3 +1,4 @@
+import logging
 import random
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -5,6 +6,8 @@ from itertools import product
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ScanGenerator",
@@ -35,10 +38,11 @@ class ScanGenerator:
 class RefiningGenerator(ScanGenerator):
     """Generates progressively finer grid by halving distance between points each level."""
 
-    def __init__(self, lower, upper, randomise_order):
+    def __init__(self, lower, upper, randomise_order, dtype="float"):
         self.lower = float(min(lower, upper))
         self.upper = float(max(lower, upper))
         self.randomise_order = randomise_order
+        self.dtype = dtype
         self.limit_lower = float("-inf")
         self.limit_upper = float("inf")
 
@@ -46,6 +50,23 @@ class RefiningGenerator(ScanGenerator):
         ""
         # For floating-point parameters, a refining scan, in practical terms, never runs
         # out of points. Will need to be amended for integer parameters.
+
+        def int_point_spacing(level):
+            return round(self.upper - self.lower) / (2**level)
+
+        if self.dtype == "int":
+            current_point_spacing = int_point_spacing(level)
+            previous_point_spacing = int_point_spacing(level - 1) if level > 0 else None
+
+            if current_point_spacing > 1 or np.isclose(current_point_spacing, 1):
+                return True
+            elif previous_point_spacing is None or previous_point_spacing > 1:
+                # If the previous level had spacing > 1, then we still have some points
+                # to add at this level, even if the average spacing is now < 1.
+                return True
+            else:
+                return False
+
         return True
 
     def points_for_level(self, level: int, rng=None) -> list[Any]:
@@ -56,6 +77,11 @@ class RefiningGenerator(ScanGenerator):
             d = self.upper - self.lower
             num = 2 ** (level - 1)
             points = np.arange(num) * d / num + d / (2 * num) + self.lower
+
+        if self.dtype == "int":
+            # TODO: Avoid point duplication in the final level
+            # Occurs if `self.upper - self.lower` is not a power of 2
+            points = points.astype(int)
 
         # Silently drop points outside of the limits
         points = points[(points >= self.limit_lower) & (points <= self.limit_upper)]
@@ -87,6 +113,7 @@ class CentreSpanRefiningGenerator(RefiningGenerator):
         randomise_order,
         limit_lower=-np.inf,
         limit_upper=np.inf,
+        dtype="float",
     ):
         self.centre = centre
         self.half_span = half_span
@@ -101,6 +128,7 @@ class CentreSpanRefiningGenerator(RefiningGenerator):
         self.limit_lower = limit_lower
         self.limit_upper = limit_upper
         self.randomise_order = randomise_order
+        self.dtype = dtype
 
 
 class ExpandingGenerator(ScanGenerator):
@@ -109,7 +137,13 @@ class ExpandingGenerator(ScanGenerator):
     """
 
     def __init__(
-        self, centre, spacing, randomise_order: bool, limit_lower=None, limit_upper=None
+        self,
+        centre,
+        spacing,
+        randomise_order: bool,
+        limit_lower=None,
+        limit_upper=None,
+        dtype="float",
     ):
         """
         :param limit_lower: Optional lower limit (inclusive) to the range of generated
@@ -117,7 +151,20 @@ class ExpandingGenerator(ScanGenerator):
             limited (e.g. to be non-negative).
         :param limit_upper: See `limit_lower`.
         """
+
+        if dtype == "int":
+            centre = round(centre)
+            rounded_spacing = round(spacing)
+            if not np.isclose(spacing, rounded_spacing):
+                logger.warning(
+                    "Integer scan with non-integer spacing %.2f, rounding to %d.",
+                    spacing,
+                    rounded_spacing,
+                )
+            spacing = max(rounded_spacing, 1)
+
         self.centre = centre
+
         self.spacing = abs(spacing)
         self.randomise_order = randomise_order
 
@@ -128,6 +175,8 @@ class ExpandingGenerator(ScanGenerator):
         self.limit_upper = limit_upper if limit_upper is not None else float("inf")
         if centre > self.limit_upper:
             raise ValueError("Given scan centre exceeds upper limit")
+
+        self.dtype = dtype
 
     def has_level(self, level: int) -> bool:
         ""
@@ -167,9 +216,28 @@ class ExpandingGenerator(ScanGenerator):
 class LinearGenerator(ScanGenerator):
     """Generates equally spaced points between two endpoints."""
 
-    def __init__(self, start, stop, num_points, randomise_order):
+    def __init__(self, start, stop, num_points, randomise_order, dtype="float"):
         if num_points < 2:
             raise ValueError("Need at least 2 points in linear scan")
+
+        self.dtype = dtype
+
+        max_num_points = round(abs(stop - start) + 1) if dtype == "int" else 0xFFFF
+
+        if dtype == "int":
+            start = round(start)
+            stop = round(stop)
+            if num_points > max_num_points:
+                logger.warning(
+                    "Cannot generate %d unique integer points in range [%d, %d]. "
+                    "Reducing number of points to %d.",
+                    num_points,
+                    start,
+                    stop,
+                    max_num_points,
+                )
+                num_points = max_num_points
+
         self.start = start
         self.stop = stop
         self.num_points = num_points
@@ -182,9 +250,14 @@ class LinearGenerator(ScanGenerator):
     def points_for_level(self, level: int, rng=None) -> list[Any]:
         ""
         assert level == 0
+
         points = np.linspace(
             start=self.start, stop=self.stop, num=self.num_points, endpoint=True
         )
+
+        if self.dtype == "int":
+            points = np.round(points).astype(int)
+
         if self.randomise_order:
             rng.shuffle(points)
         return points.tolist()
@@ -193,6 +266,8 @@ class LinearGenerator(ScanGenerator):
         ""
         target["min"] = min(self.start, self.stop)
         target["max"] = max(self.start, self.stop)
+
+        # Inexact for integer scans, but good enough for scaling axes.
         target["increment"] = abs(self.stop - self.start) / (self.num_points - 1)
 
 
@@ -207,6 +282,7 @@ class CentreSpanGenerator(LinearGenerator):
         randomise_order: bool,
         limit_lower=None,
         limit_upper=None,
+        dtype="float",
     ):
         """
         :param limit_lower: Optional lower limit (inclusive) to the range of generated
@@ -230,6 +306,8 @@ class CentreSpanGenerator(LinearGenerator):
 
         if num_points == 1:
             self.start = self.stop = centre
+
+        self.dtype = dtype
 
 
 class ListGenerator(ScanGenerator):
