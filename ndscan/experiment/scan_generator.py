@@ -156,11 +156,8 @@ class ExpandingGenerator(ScanGenerator):
             centre = round(centre)
             rounded_spacing = round(spacing)
             if not np.isclose(spacing, rounded_spacing):
-                logger.warning(
-                    "Integer scan with non-integer spacing %.2f, rounding to %d.",
-                    spacing,
-                    rounded_spacing,
-                )
+                raise ValueError("Cannot scan integer with non-integer spacing")
+
             spacing = max(rounded_spacing, 1)
 
         self.centre = centre
@@ -222,26 +219,35 @@ class LinearGenerator(ScanGenerator):
 
         self.dtype = dtype
 
-        max_num_points = round(abs(stop - start) + 1) if dtype == "int" else 0xFFFF
-
         if dtype == "int":
-            start = round(start)
-            stop = round(stop)
-            if num_points > max_num_points:
-                logger.warning(
-                    "Cannot generate %d unique integer points in range [%d, %d]. "
-                    "Reducing number of points to %d.",
-                    num_points,
-                    start,
-                    stop,
-                    max_num_points,
-                )
-                num_points = max_num_points
+            start, stop, num_points = self._to_integer_range(start, stop, num_points)
 
         self.start = start
         self.stop = stop
         self.num_points = num_points
         self.randomise_order = randomise_order
+
+    def _to_integer_range(self, start, stop, num_points):
+        if not np.isclose(start, round(start)) or not np.isclose(stop, round(stop)):
+            raise ValueError("Cannot scan integer over non-integer range")
+
+        start = round(start)
+        stop = round(stop)
+
+        max_num_points = (stop - start) + 1
+
+        if num_points > max_num_points:
+            logger.warning(
+                "Cannot generate %d unique integer points in range [%d, %d]. "
+                "Reducing number of points to %d.",
+                num_points,
+                start,
+                stop,
+                max_num_points,
+            )
+            num_points = max_num_points
+
+        return start, stop, num_points
 
     def has_level(self, level: int) -> bool:
         ""
@@ -308,6 +314,11 @@ class CentreSpanGenerator(LinearGenerator):
             self.start = self.stop = centre
 
         self.dtype = dtype
+
+        if self.dtype == "int":
+            self.start, self.stop, self.num_points = self._to_integer_range(
+                self.start, self.stop, num_points
+            )
 
 
 class ListGenerator(ScanGenerator):
