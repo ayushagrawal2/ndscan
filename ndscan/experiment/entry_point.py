@@ -53,7 +53,7 @@ from .result_channels import (
     ResultChannel,
     ScalarDatasetSink,
 )
-from .scan_generator import GENERATORS, ScanOptions
+from .scan_generator import ScanOptions, select_generator_class
 from .scan_runner import (
     ScanAxis,
     ScanSpec,
@@ -253,18 +253,11 @@ class ArgumentInterface(HasEnvironment):
         generators = []
         axes = []
         for axspec in scan.get("axes", []):
-            generator_class = GENERATORS.get(axspec["type"], None)
-            if not generator_class:
-                raise ScanSpecError(
-                    "Axis type '{}' not implemented".format(axspec["type"])
-                )
-            generator = generator_class(**axspec["range"])
-            generators.append(generator)
-
             fqn = axspec["fqn"]
             pathspec = axspec["path"]
 
             try:
+                schema = self._schemata[fqn]
                 store_type = self._sample_instances[fqn].StoreType
             except KeyError:
                 raise KeyError(
@@ -273,9 +266,18 @@ class ArgumentInterface(HasEnvironment):
                     + "(likely due to outdated argument editor after "
                     + "changes to experiment; try Recompute All Arguments)"
                 )
+
+            generator_class = select_generator_class(axspec["type"], schema["type"])
+            if not generator_class:
+                raise ScanSpecError(
+                    "Axis type '{}' not implemented".format(axspec["type"])
+                )
+            generator = generator_class(**axspec["range"])
+            generators.append(generator)
+
             first_value = generator.points_for_level(0, random)[0]
             store = store_type((fqn, pathspec), store_type.value_from_pyon(first_value))
-            axes.append(ScanAxis(self._schemata[fqn], pathspec, store))
+            axes.append(ScanAxis(schema, pathspec, store))
 
         options = ScanOptions(
             scan.get("num_repeats", 1),

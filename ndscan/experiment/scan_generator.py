@@ -12,7 +12,14 @@ __all__ = [
     "LinearGenerator",
     "ListGenerator",
     "CentreSpanRefiningGenerator",
+    "IntRefiningGenerator",
+    "IntLinearGenerator",
+    "IntCentreSpanGenerator",
+    "IntCentreSpanRefiningGenerator",
     "ScanOptions",
+    "GENERATORS",
+    "INT_GENERATORS",
+    "select_generator_class",
 ]
 
 
@@ -232,6 +239,207 @@ class CentreSpanGenerator(LinearGenerator):
             self.start = self.stop = centre
 
 
+def _refining_max_level(d: int) -> int:
+    """Largest refinement level at which :class:`IntRefiningGenerator`'s bisection
+    scheme can contribute further integers, given range size ``d = upper - lower``.
+
+    The bisection forms an implicit binary search tree of depth at most
+    ``ceil(log2(d))`` over the integers in ``[lower, upper]`` — each level halves
+    the largest open interval, until no interval has interior integers left.
+    """
+    if d <= 0:
+        return 0
+    return (d - 1).bit_length()
+
+
+def _bisection_points(lower: int, upper: int, depth: int):
+    """Yield, in left-to-right order, the integer midpoints at the given depth of
+    the bisection tree of the open interval ``(lower, upper)``.
+
+    Depth 0 is the root midpoint ``(lower + upper) // 2``; depth ``k`` recurses
+    into the left and right halves at depth ``k - 1``. Once an interval has no
+    interior integers (``upper - lower < 2``), recursion stops — each integer in
+    ``[lower, upper]`` is therefore visited at most once across all depths.
+    """
+    if upper - lower < 2:
+        return
+    mid = (lower + upper) // 2
+    if depth == 0:
+        yield mid
+        return
+    yield from _bisection_points(lower, mid, depth - 1)
+    yield from _bisection_points(mid, upper, depth - 1)
+
+
+class IntRefiningGenerator(ScanGenerator):
+    """Integer-valued analogue of :class:`RefiningGenerator`.
+
+    Level 0 emits ``lower`` and ``upper``; subsequent levels recursively bisect
+    the resulting open intervals, emitting the integer midpoint of each. By
+    construction every integer in ``[lower, upper]`` is visited at most once,
+    and the scan terminates exactly once all of them have been visited.
+    """
+
+    def __init__(self, lower, upper, randomise_order):
+        self.lower = int(min(lower, upper))
+        self.upper = int(max(lower, upper))
+        self.randomise_order = randomise_order
+        self.limit_lower = -np.inf
+        self.limit_upper = np.inf
+
+    def has_level(self, level: int) -> bool:
+        ""
+        return level <= _refining_max_level(self.upper - self.lower)
+
+    def points_for_level(self, level: int, rng=None) -> list[Any]:
+        ""
+        if level == 0:
+            if self.lower == self.upper:
+                points = [self.lower]
+            else:
+                points = [self.lower, self.upper]
+        else:
+            points = list(_bisection_points(self.lower, self.upper, level - 1))
+
+        # Silently drop points outside of the limits.
+        points = [p for p in points if self.limit_lower <= p <= self.limit_upper]
+        if self.randomise_order:
+            rng.shuffle(points)
+        return points
+
+    def describe_limits(self, target: dict[str, Any]) -> None:
+        ""
+        target["min"] = self.lower
+        target["max"] = self.upper
+
+
+class IntCentreSpanRefiningGenerator(IntRefiningGenerator):
+    """Integer-valued analogue of :class:`CentreSpanRefiningGenerator`.
+
+    :param limit_lower: Optional lower limit (inclusive) to the range of generated
+            points.
+    :param limit_upper: See ``limit_lower``.
+    """
+
+    def __init__(
+        self,
+        centre,
+        half_span,
+        randomise_order,
+        limit_lower=-np.inf,
+        limit_upper=np.inf,
+    ):
+        self.centre = int(round(centre))
+        self.half_span = int(round(abs(half_span)))
+        self.lower = self.centre - self.half_span
+        self.upper = self.centre + self.half_span
+        if self.lower < limit_lower and self.upper > limit_upper:
+            # If both extents of the span exceed the limits, change the span to
+            # fit the larger of the two so that the scan stays centred.
+            self.half_span = int(
+                round(
+                    max(
+                        abs(self.centre - limit_lower),
+                        abs(limit_upper - self.centre),
+                    )
+                )
+            )
+            self.lower = self.centre - self.half_span
+            self.upper = self.centre + self.half_span
+        self.limit_lower = limit_lower
+        self.limit_upper = limit_upper
+        self.randomise_order = randomise_order
+
+
+class IntLinearGenerator(ScanGenerator):
+    """Integer-valued analogue of :class:`LinearGenerator`.
+
+    Computes ``num_points`` equally spaced positions between ``start`` and
+    ``stop`` and rounds each to the nearest integer. Because the underlying
+    floating-point sequence is monotonic, integer duplicates that appear when
+    the requested density exceeds one point per integer are always adjacent —
+    a single pass collapses them, so every integer is visited at most once.
+    """
+
+    def __init__(self, start, stop, num_points, randomise_order):
+        if num_points < 2:
+            raise ValueError("Need at least 2 points in linear scan")
+        self.start = int(round(start))
+        self.stop = int(round(stop))
+        self.num_points = int(num_points)
+        self.randomise_order = randomise_order
+
+    def has_level(self, level: int) -> bool:
+        ""
+        return level == 0
+
+    def points_for_level(self, level: int, rng=None) -> list[Any]:
+        ""
+        assert level == 0
+        floats = np.linspace(
+            start=self.start, stop=self.stop, num=self.num_points, endpoint=True
+        )
+        points: list[int] = []
+        for f in floats:
+            v = int(round(float(f)))
+            if not points or points[-1] != v:
+                points.append(v)
+        if self.randomise_order:
+            rng.shuffle(points)
+        return points
+
+    def describe_limits(self, target: dict[str, Any]) -> None:
+        ""
+        target["min"] = min(self.start, self.stop)
+        target["max"] = max(self.start, self.stop)
+        if self.num_points > 1:
+            target["increment"] = max(
+                1,
+                round(abs(self.stop - self.start) / (self.num_points - 1)),
+            )
+
+
+class IntCentreSpanGenerator(IntLinearGenerator):
+    """Integer-valued analogue of :class:`CentreSpanGenerator`.
+
+    :param limit_lower: Optional lower limit (inclusive) to the range of generated
+            points.
+    :param limit_upper: See ``limit_lower``.
+    """
+
+    def __init__(
+        self,
+        centre,
+        half_span,
+        num_points: int,
+        randomise_order: bool,
+        limit_lower=None,
+        limit_upper=None,
+    ):
+        if num_points < 1:
+            raise ValueError("Need at least one point in centre/span scan")
+        self.num_points = int(num_points)
+        self.randomise_order = randomise_order
+
+        centre = int(round(centre))
+        half_span = int(round(abs(half_span)))
+        self.start = centre - half_span
+        if limit_lower is not None and not (
+            isinstance(limit_lower, float) and np.isinf(limit_lower)
+        ):
+            self.start = max(self.start, int(np.ceil(limit_lower)))
+        self.stop = centre + half_span
+        if limit_upper is not None and not (
+            isinstance(limit_upper, float) and np.isinf(limit_upper)
+        ):
+            self.stop = min(self.stop, int(np.floor(limit_upper)))
+        if self.start > self.stop:
+            raise ValueError("Empty centre/span scan (lower limit larger than upper)")
+
+        if self.num_points == 1:
+            self.start = self.stop = centre
+
+
 class ListGenerator(ScanGenerator):
     """Generates points by reading from an explicitly specified list."""
 
@@ -267,6 +475,33 @@ GENERATORS = {
     "centre_span_refining": CentreSpanRefiningGenerator,
     "list": ListGenerator,
 }
+
+#: Generators to prefer for integer parameters; fall back to :data:`GENERATORS` for
+#: scan types not listed here (``expanding`` already produces integer-spaced points,
+#: ``list`` simply enumerates user-supplied values).
+INT_GENERATORS = {
+    "refining": IntRefiningGenerator,
+    "linear": IntLinearGenerator,
+    "centre_span": IntCentreSpanGenerator,
+    "centre_span_refining": IntCentreSpanRefiningGenerator,
+}
+
+
+def select_generator_class(
+    scan_type: str, param_type: str
+) -> type[ScanGenerator] | None:
+    """Return the :class:`ScanGenerator` subclass implementing ``scan_type`` for a
+    parameter of the given schema type, or ``None`` if no implementation matches.
+
+    Integer parameters use the :data:`INT_GENERATORS` specialisations where
+    available, so each integer is visited at most once and refining scans
+    terminate.
+    """
+    if param_type == "int":
+        cls = INT_GENERATORS.get(scan_type)
+        if cls is not None:
+            return cls
+    return GENERATORS.get(scan_type)
 
 
 @dataclass
