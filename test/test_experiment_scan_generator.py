@@ -386,8 +386,12 @@ class IntLinearCase(unittest.TestCase):
 
     def test_more_points_than_integers(self):
         # 10 points across a width of 2 → must dedup to {0, 1, 2}.
-        gen = IntLinearGenerator(start=0, stop=2, num_points=10, randomise_order=False)
+        with self.assertLogs(level="WARNING"):
+            gen = IntLinearGenerator(
+                start=0, stop=2, num_points=10, randomise_order=False
+            )
         self.assertEqual(gen.points_for_level(0), [0, 1, 2])
+        self.assertEqual(gen.num_points, 3)
 
     def test_banker_rounding_at_half(self):
         # linspace(0, 2, 5) = [0, 0.5, 1.0, 1.5, 2.0]. Python's banker's rounding
@@ -426,15 +430,16 @@ class IntCentreSpanCase(unittest.TestCase):
             randomise_order=False,
             limit_lower=3,
         )
-        # start clamped from 1 up to 3; stop unchanged at 9. linspace(3, 9, 5) is
-        # [3, 4.5, 6, 7.5, 9]; Python's banker's rounding takes 4.5→4 and 7.5→8.
-        self.assertEqual(gen.points_for_level(0), [3, 4, 6, 8, 9])
+        # start clamped from 1 up to 3; stop unchanged at 9.
+        self.assertEqual(gen.points_for_level(0), [3, 4, 6, 7, 9])
 
     def test_more_points_than_integers(self):
-        gen = IntCentreSpanGenerator(
-            centre=1, half_span=1, num_points=10, randomise_order=False
-        )
+        with self.assertLogs(level="WARNING"):
+            gen = IntCentreSpanGenerator(
+                centre=1, half_span=1, num_points=10, randomise_order=False
+            )
         self.assertEqual(gen.points_for_level(0), [0, 1, 2])
+        self.assertEqual(gen.num_points, 3)
 
     def test_empty_after_limits(self):
         with self.assertRaises(ValueError):
@@ -449,9 +454,7 @@ class IntCentreSpanCase(unittest.TestCase):
 
 class SelectGeneratorClassCase(unittest.TestCase):
     def test_int_dispatches_to_int_variant(self):
-        self.assertIs(
-            select_generator_class("refining", "int"), IntRefiningGenerator
-        )
+        self.assertIs(select_generator_class("refining", "int"), IntRefiningGenerator)
         self.assertIs(select_generator_class("linear", "int"), IntLinearGenerator)
         self.assertIs(
             select_generator_class("centre_span", "int"), IntCentreSpanGenerator
@@ -462,16 +465,12 @@ class SelectGeneratorClassCase(unittest.TestCase):
         )
 
     def test_float_uses_default(self):
-        self.assertIs(
-            select_generator_class("refining", "float"), RefiningGenerator
-        )
+        self.assertIs(select_generator_class("refining", "float"), RefiningGenerator)
         self.assertIs(select_generator_class("linear", "float"), LinearGenerator)
 
     def test_int_falls_back_when_no_specialisation(self):
         # No int-specialised variant for ``expanding``/``list``.
-        self.assertIs(
-            select_generator_class("expanding", "int"), ExpandingGenerator
-        )
+        self.assertIs(select_generator_class("expanding", "int"), ExpandingGenerator)
         self.assertIs(select_generator_class("list", "int"), ListGenerator)
 
     def test_unknown_returns_none(self):
