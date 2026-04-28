@@ -75,11 +75,12 @@ class ScanOption(QtCore.QObject):
     def attempt_read_from_axis(self, axis: dict) -> bool:
         return False
 
-    def make_randomise_box(self):
+    def make_randomise_box(self, is_randomisable=True):
         box = QtWidgets.QCheckBox()
         box.setToolTip("Randomise scan point order")
         box.setIcon(load_icon_cached("media-playlist-shuffle-32.svg"))
-        box.setChecked(True)
+        box.setChecked(is_randomisable)
+        box.setEnabled(is_randomisable)
         box.stateChanged.connect(self.value_changed)
         return box
 
@@ -145,6 +146,7 @@ class NumericScanOption(ScanOption):
         self.scale = spec.get("scale", 1.0)
         self.min = spec.get("min", float("-inf"))
         self.max = spec.get("max", float("inf"))
+        self.is_randomisable = spec.get("is_randomisable", True)
 
     def _make_spin_box(self, set_limits_from_spec=True):
         box = ScientificSpinBox()
@@ -232,7 +234,7 @@ class RangeScanOption(NumericScanOption):
             lambda *_: self.box_points.setEnabled(not self.check_infinite.isChecked())
         )
 
-        self.check_randomise = self.make_randomise_box()
+        self.check_randomise = self.make_randomise_box(self.is_randomisable)
         layout.addWidget(self.check_randomise)
         layout.setStretchFactor(self.check_randomise, 0)
 
@@ -377,7 +379,7 @@ class ExpandingScanOption(NumericScanOption):
 
         layout.addWidget(make_divider())
 
-        self.check_randomise = self.make_randomise_box()
+        self.check_randomise = self.make_randomise_box(self.is_randomisable)
         layout.addWidget(self.check_randomise)
         layout.setStretchFactor(self.check_randomise, 0)
 
@@ -436,7 +438,7 @@ class ListScanOption(NumericScanOption):
 
         layout.addWidget(make_divider())
 
-        self.check_randomise = self.make_randomise_box()
+        self.check_randomise = self.make_randomise_box(self.is_randomisable)
         layout.addWidget(self.check_randomise)
         layout.setStretchFactor(self.check_randomise, 0)
 
@@ -476,7 +478,9 @@ class BoolScanOption(ScanOption):
         layout.addWidget(dummy_box)
         layout.setStretchFactor(dummy_box, 0)
         layout.addWidget(make_divider())
-        self.check_randomise = self.make_randomise_box()
+
+        is_randomisable = self.schema.get("spec", {}).get("is_randomisable", True)
+        self.check_randomise = self.make_randomise_box(is_randomisable)
         layout.addWidget(self.check_randomise)
         layout.setStretchFactor(self.check_randomise, 1)
 
@@ -501,7 +505,8 @@ class BoolScanOption(ScanOption):
 
 class EnumScanOption(ScanOption):
     def build_ui(self, layout: QtWidgets.QLayout) -> None:
-        self.check_randomise = self.make_randomise_box()
+        is_randomisable = self.schema.get("spec", {}).get("is_randomisable", True)
+        self.check_randomise = self.make_randomise_box(is_randomisable)
         layout.addWidget(self.check_randomise)
         layout.setStretchFactor(self.check_randomise, 0)
 

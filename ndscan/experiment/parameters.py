@@ -385,6 +385,7 @@ class FloatParam(ParamBase):
         step: float | None = None,
         is_scannable: bool = True,
         explanation: str = "",
+        is_randomisable: bool = True,
     ):
         ParamBase.__init__(
             self,
@@ -398,6 +399,7 @@ class FloatParam(ParamBase):
             step=step,
             is_scannable=is_scannable,
             explanation=explanation,
+            is_randomisable=is_randomisable,
         )
         self.scale = resolve_numeric_scale(scale, unit)
         self.step = step if step is not None else self.scale / 10.0
@@ -408,6 +410,7 @@ class FloatParam(ParamBase):
             "is_scannable": self.is_scannable,
             "scale": self.scale,
             "step": self.step,
+            "is_randomisable": self.is_randomisable,
         }
         if self.min is not None:
             spec["min"] = self.min
@@ -463,6 +466,7 @@ class IntParam(ParamBase):
         scale: int | None = None,
         is_scannable: bool = True,
         explanation: str = "",
+        is_randomisable: bool = True,
     ):
         ParamBase.__init__(
             self,
@@ -475,6 +479,7 @@ class IntParam(ParamBase):
             scale=scale,
             is_scannable=is_scannable,
             explanation=explanation,
+            is_randomisable=is_randomisable,
         )
         self.scale = resolve_numeric_scale(scale, unit)
         if self.scale != 1:
@@ -486,7 +491,11 @@ class IntParam(ParamBase):
 
     def describe(self) -> dict[str, Any]:
         """"""
-        spec = {"is_scannable": self.is_scannable, "scale": self.scale}
+        spec = {
+            "is_scannable": self.is_scannable,
+            "scale": self.scale,
+            "is_randomisable": self.is_randomisable,
+        }
         if self.min is not None:
             spec["min"] = self.min
         if self.max is not None:
@@ -600,6 +609,7 @@ class BoolParam(ParamBase):
         is_scannable: bool = True,
         *,
         explanation: str = "",
+        is_randomisable: bool = True,
     ):
         super().__init__(
             fqn=fqn,
@@ -607,6 +617,7 @@ class BoolParam(ParamBase):
             default=default,
             is_scannable=is_scannable,
             explanation=explanation,
+            is_randomisable=is_randomisable,
         )
 
     def describe(self) -> dict[str, Any]:
@@ -616,7 +627,10 @@ class BoolParam(ParamBase):
             "description": self.description,
             "type": "bool",
             "default": str(self.default),
-            "spec": {"is_scannable": self.is_scannable},
+            "spec": {
+                "is_scannable": self.is_scannable,
+                "is_randomisable": self.is_randomisable,
+            },
             "explanation": self.explanation,
         }
 
@@ -714,6 +728,7 @@ class EnumParam(ParamBase):
         is_scannable: bool = True,
         *,
         explanation: str = "",
+        is_randomisable: bool = True,
     ):
         if enum_class is None:
             if isinstance(default, Enum):
@@ -745,6 +760,7 @@ class EnumParam(ParamBase):
             enum_class=enum_class,
             is_scannable=is_scannable,
             explanation=explanation,
+            is_randomisable=is_randomisable,
         )
 
     def describe(self) -> dict[str, Any]:
@@ -767,7 +783,11 @@ class EnumParam(ParamBase):
             "description": self.description,
             "type": "enum",
             "default": default,
-            "spec": {"members": members, "is_scannable": self.is_scannable},
+            "spec": {
+                "members": members,
+                "is_scannable": self.is_scannable,
+                "is_randomisable": self.is_randomisable,
+            },
             "explanation": self.explanation,
         }
 

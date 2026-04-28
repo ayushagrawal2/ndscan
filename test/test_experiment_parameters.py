@@ -90,6 +90,7 @@ class FloatParamCase(GenericBase.Cases):
         "unit": "baz",
         "scale": 1.0,
         "explanation": "barbarbar",
+        "is_randomisable": False,
     }
     EXPECTED_DESCRIPTION = {
         "description": "bar",
@@ -102,6 +103,7 @@ class FloatParamCase(GenericBase.Cases):
             "scale": 1.0,
             "step": 0.1,
             "is_scannable": True,
+            "is_randomisable": False,
         },
         "explanation": "barbarbar",
     }
@@ -130,6 +132,7 @@ class IntParamCase(GenericBase.Cases):
             "unit": "baz",
             "scale": 1,
             "is_scannable": True,
+            "is_randomisable": True,
         },
         "explanation": "barbarbar",
     }
@@ -178,6 +181,7 @@ class BoolParamCase(GenericBase.Cases):
         "type": "bool",
         "spec": {
             "is_scannable": True,
+            "is_randomisable": True,
         },
         "explanation": "barbarbar",
     }
@@ -199,12 +203,17 @@ class EnumParamElemCase(GenericBase.Cases):
         "description": "bar",
         "default": Options.first,
         "explanation": "barbarbar",
+        "is_randomisable": True,
     }
     EXPECTED_DESCRIPTION = {
         "description": "bar",
         "type": "enum",
         "default": "'first'",
-        "spec": {"members": {o.name: o.value for o in Options}, "is_scannable": True},
+        "spec": {
+            "members": {o.name: o.value for o in Options},
+            "is_scannable": True,
+            "is_randomisable": True,
+        },
         "explanation": "barbarbar",
     }
 
@@ -223,13 +232,18 @@ class EnumParamStringCase(GenericBase.Cases):
     EXAMPLE_KWARGS = {
         "description": "bar",
         "default": "'first'",
+        "is_randomisable": False,
     }
     EXPECTED_DESCRIPTION = {
         "fqn": "foo",
         "description": "bar",
         "type": "enum",
         "default": "'first'",
-        "spec": {"members": {o.name: o.value for o in Options}, "is_scannable": True},
+        "spec": {
+            "members": {o.name: o.value for o in Options},
+            "is_scannable": True,
+            "is_randomisable": False,
+        },
         "explanation": "",
     }
 
