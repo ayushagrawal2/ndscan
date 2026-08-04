@@ -59,6 +59,7 @@ class ScanOption(QtCore.QObject):
         super().__init__()
         self.schema = schema
         self.path = path
+        self.allow_randomisation = self.schema["spec"].get("allow_randomisation", True)
 
     def build_ui(self, layout: QtWidgets.QLayout) -> None:
         raise NotImplementedError
@@ -77,9 +78,15 @@ class ScanOption(QtCore.QObject):
 
     def make_randomise_box(self):
         box = QtWidgets.QCheckBox()
-        box.setToolTip("Randomise scan point order")
         box.setIcon(load_icon_cached("media-playlist-shuffle-32.svg"))
-        box.setChecked(True)
+        box.setChecked(self.allow_randomisation)
+        box.setEnabled(self.allow_randomisation)
+
+        if self.allow_randomisation:
+            box.setToolTip("Randomise scan point order")
+        else:
+            box.setToolTip("<i>Randomisation of scan point order disabled</i>")
+
         box.stateChanged.connect(self.value_changed)
         return box
 
@@ -282,14 +289,18 @@ class MinMaxScanOption(RangeScanOption):
             self.check_infinite.setChecked(True)
             self.box_start.setValue(axis["range"].get("lower", 0.0) / self.scale)
             self.box_stop.setValue(axis["range"].get("upper", 0.0) / self.scale)
-            self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+            self.check_randomise.setChecked(
+                axis["range"].get("randomise_order", self.allow_randomisation)
+            )
             return True
         if axis["type"] == "linear":
             self.check_infinite.setChecked(False)
             self.box_start.setValue(axis["range"].get("start", 0.0) / self.scale)
             self.box_stop.setValue(axis["range"].get("stop", 0.0) / self.scale)
             self.box_points.setValue(axis["range"].get("num_points", 21))
-            self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+            self.check_randomise.setChecked(
+                axis["range"].get("randomise_order", self.allow_randomisation)
+            )
             return True
         return False
 
@@ -350,7 +361,9 @@ class CentreSpanScanOption(RangeScanOption):
         # Common to both finite/refining:
         self.box_half_span.setValue((axis["range"].get("half_span", 0.0) / self.scale))
         self.box_centre.setValue((axis["range"].get("centre", 0.0) / self.scale))
-        self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+        self.check_randomise.setChecked(
+            axis["range"].get("randomise_order", self.allow_randomisation)
+        )
         return True
 
     def write_type_and_range(self, spec: dict) -> None:
@@ -416,7 +429,9 @@ class ExpandingScanOption(NumericScanOption):
             return False
         self.box_centre.setValue(axis["range"].get("centre", 0.0) / self.scale)
         self.box_spacing.setValue(axis["range"].get("spacing", 0.0) / self.scale)
-        self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+        self.check_randomise.setChecked(
+            axis["range"].get("randomise_order", self.allow_randomisation)
+        )
         return True
 
 
@@ -463,7 +478,9 @@ class ListScanOption(NumericScanOption):
         values = axis["range"].get("values", [])
         list_str = ", ".join([str(v / self.scale) for v in values])
         self.box_pyon.setText(list_str)
-        self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+        self.check_randomise.setChecked(
+            axis["range"].get("randomise_order", self.allow_randomisation)
+        )
         return True
 
 
@@ -495,7 +512,9 @@ class BoolScanOption(ScanOption):
     def attempt_read_from_axis(self, axis: dict) -> bool:
         if axis["type"] != "list":
             return False
-        self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+        self.check_randomise.setChecked(
+            axis["range"].get("randomise_order", self.allow_randomisation)
+        )
         return True
 
 
@@ -520,7 +539,9 @@ class EnumScanOption(ScanOption):
     def attempt_read_from_axis(self, axis: dict) -> bool:
         if axis["type"] != "list":
             return False
-        self.check_randomise.setChecked(axis["range"].get("randomise_order", True))
+        self.check_randomise.setChecked(
+            axis["range"].get("randomise_order", self.allow_randomisation)
+        )
         return True
 
 
